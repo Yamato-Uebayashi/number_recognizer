@@ -1,7 +1,7 @@
 use crate::{binary_load::load_neuron, network};
 use std::fs::File;
 
-pub fn guess_answer(layers: &mut Vec<LiteLayer>, image: &Vec<f64>) {
+pub fn guess_answer(layers: &mut Vec<LightLayer>, image: &Vec<f64>) {
     let layers_last_i = layers.len() - 1;
     let input_layer = layers.first_mut().unwrap();
     input_layer.set_neurons_activations(image, layers_last_i == 0);
@@ -27,17 +27,17 @@ pub fn guess_answer(layers: &mut Vec<LiteLayer>, image: &Vec<f64>) {
     }
 }
 
-pub struct LiteLayer {
-    neurons: Vec<LiteNeuron>,
+pub struct LightLayer {
+    neurons: Vec<LightNeuron>,
 }
 
-impl LiteLayer {
-    pub fn new(file: &mut File, size_this_layer: usize, size_shallower_layer: usize) -> LiteLayer {
-        let mut neurons: Vec<LiteNeuron> = Vec::with_capacity(size_this_layer);
+impl LightLayer {
+    pub fn new(file: &mut File, size_this_layer: usize, size_shallower_layer: usize) -> LightLayer {
+        let mut neurons: Vec<LightNeuron> = Vec::with_capacity(size_this_layer);
         for _ in 0..size_this_layer {
-            neurons.push(LiteNeuron::new(file, size_shallower_layer));
+            neurons.push(LightNeuron::new(file, size_shallower_layer));
         }
-        LiteLayer { neurons }
+        LightLayer { neurons }
     }
 
     pub fn set_neurons_activations(
@@ -58,16 +58,16 @@ impl LiteLayer {
     }
 }
 
-struct LiteNeuron {
+struct LightNeuron {
     weights: Vec<f64>,
     bias: f64,
     activation: f64,
 }
 
-impl LiteNeuron {
-    pub fn new(file: &mut File, size_shallower_layer: usize) -> LiteNeuron {
+impl LightNeuron {
+    pub fn new(file: &mut File, size_shallower_layer: usize) -> LightNeuron {
         if let Ok((weights, bias)) = load_neuron(file, size_shallower_layer) {
-            LiteNeuron {
+            LightNeuron {
                 weights,
                 bias,
                 activation: 0f64,

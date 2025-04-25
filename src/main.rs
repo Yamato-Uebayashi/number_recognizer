@@ -1,9 +1,9 @@
 mod binary_load;
 mod binary_save;
-mod lite_network;
+mod light_network;
 mod network;
 
-use lite_network::LiteLayer;
+use light_network::LightLayer;
 use network::Layer;
 use rand::{self, Rng};
 use std::fs::{self, DirEntry, File};
@@ -95,6 +95,7 @@ fn main() -> io::Result<()> {
                     println!("の値が不正です。再度入力して下さい。");
                 };
                 let num_iteration: usize = num_images / size_batch;
+                //学習の進み具合に伴って学習率を小さくしていく為の係数
                 let learning_rate_coefficient =
                     100f64.powf(1.0 / (num_iteration * num_epoch) as f64);
                 let mut rng = rand::thread_rng();
@@ -135,6 +136,7 @@ fn main() -> io::Result<()> {
                 println!();
                 if let Err(x) = binary_save::save_model(&layers, &_layer_sizes[1..]) {
                     println!("モデルの保存中にエラーが発生しました:\n{}", x);
+                    return Err(x);
                 } else {
                     println!("正常にモデルを保存できました。");
                 }
@@ -164,13 +166,13 @@ fn main() -> io::Result<()> {
                     }
                 }
                 let model_name = model_name.trim().to_string();
-                let mut layers: Vec<LiteLayer> = Vec::with_capacity(layer_sizes_len);
+                let mut layers: Vec<LightLayer> = Vec::with_capacity(layer_sizes_len);
                 for i in 0..layer_sizes_len {
                     let path = Path::new("save_datas")
                         .join(&model_name)
                         .join(format!("layer{}.bin", i));
                     let mut file = File::open(&path)?;
-                    layers.push(LiteLayer::new(
+                    layers.push(LightLayer::new(
                         &mut file,
                         *layer_sizes.get(i).unwrap(),
                         if i == 0 {
@@ -192,7 +194,7 @@ fn main() -> io::Result<()> {
                     io::stdout().flush().unwrap();
                     let test_image = binary_load::get_next_image(&mut test_image_file)?;
                     let test_label = binary_load::get_next_label(&mut test_label_file)?;
-                    lite_network::guess_answer(&mut layers, &test_image);
+                    light_network::guess_answer(&mut layers, &test_image);
                     let last_layer_activations = layers.last().unwrap().get_neurons_activations();
                     let answer_of_network =
                         last_layer_activations
@@ -244,13 +246,13 @@ fn main() -> io::Result<()> {
                     }
                 }
                 let model_name = model_name.trim().to_string();
-                let mut layers: Vec<LiteLayer> = Vec::with_capacity(layer_sizes_len);
+                let mut layers: Vec<LightLayer> = Vec::with_capacity(layer_sizes_len);
                 for i in 0..layer_sizes_len {
                     let path = Path::new("save_datas")
                         .join(&model_name)
                         .join(format!("layer{}.bin", i));
                     let mut file = File::open(&path)?;
-                    layers.push(LiteLayer::new(
+                    layers.push(LightLayer::new(
                         &mut file,
                         *layer_sizes.get(i).unwrap(),
                         if i == 0 {
@@ -310,7 +312,7 @@ fn main() -> io::Result<()> {
                     }
                 }
                 let image = binary_load::get_next_image(&mut image_file)?;
-                lite_network::guess_answer(&mut layers, &image);
+                light_network::guess_answer(&mut layers, &image);
                 let last_layer_activations = layers.last().unwrap().get_neurons_activations();
                 let mut indexed_last_layer_activations: Vec<(usize, f64)> =
                     last_layer_activations.into_iter().enumerate().collect();
