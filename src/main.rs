@@ -326,7 +326,7 @@ fn main() -> io::Result<()> {
                 }
                 println!();
                 for (index, output) in indexed_last_layer_activations.into_iter().rev() {
-                    println!("{} である確率: {: >7.3}%", index, output * 100f64);
+                    println!("{} である確率: {: >7.3} %", index, output * 100f64);
                 }
                 println!("\n予測: これは {} です!", answer_of_network);
             }
