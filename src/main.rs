@@ -296,7 +296,7 @@ fn main() -> io::Result<()> {
                                     choice = choice_i;
                                     break;
                                 } else {
-                                    println!("0~{}の範囲内で", x - 1);
+                                    print!("0~{}の範囲内で", x - 1);
                                 }
                             } else {
                                 println!("変な文字が入力されました。");
