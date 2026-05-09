@@ -355,7 +355,8 @@ fn run_from_cli(args: &[String]) -> io::Result<()> {
             let epochs = get_arg_value(args, "--epochs")?.parse::<usize>().map_err(invalid_input)?;
             let learning_rate = get_arg_value(args, "--learning-rate")?.parse::<f64>().map_err(invalid_input)?;
             let model_name = get_arg_value(args, "--model-name")?;
-            train_model(hidden_layers, batch_size, epochs, learning_rate, model_name)?;
+            let epoch_log = find_optional_arg_value(args, "--epoch-log");
+            train_model(hidden_layers, batch_size, epochs, learning_rate, model_name, epoch_log)?;
             if args[1] == "train-test" {
                 run_auto_test(model_name)?;
             }
@@ -369,6 +370,9 @@ fn run_from_cli(args: &[String]) -> io::Result<()> {
 fn get_arg_value<'a>(args: &'a [String], key: &str) -> io::Result<&'a str> {
     let index = args.iter().position(|arg| arg == key).ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, format!("{key} が指定されていません。")))?;
     args.get(index + 1).map(|s| s.as_str()).ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, format!("{key} の値が不足しています。")))
+}
+fn find_optional_arg_value<'a>(args: &'a [String], key: &str) -> Option<&'a str> {
+    args.iter().position(|arg| arg == key).and_then(|i| args.get(i + 1)).map(|s| s.as_str())
 }
 
 fn parse_usize_csv(csv: &str) -> io::Result<Vec<usize>> {
@@ -387,7 +391,7 @@ fn invalid_input<E: std::fmt::Display>(e: E) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidInput, e.to_string())
 }
 
-fn train_model(hidden_layers: Vec<usize>, size_batch: usize, num_epoch: usize, mut learning_rate: f64, model_name: &str) -> io::Result<()> {
+fn train_model(hidden_layers: Vec<usize>, size_batch: usize, num_epoch: usize, mut learning_rate: f64, model_name: &str, epoch_log: Option<&str>) -> io::Result<()> {
     let mut layer_sizes = hidden_layers;
     layer_sizes.insert(0, 784);
     layer_sizes.push(10);
@@ -406,8 +410,15 @@ fn train_model(hidden_layers: Vec<usize>, size_batch: usize, num_epoch: usize, m
     for _ in 0..num_images { all_labels.push(binary_load::get_next_label(&mut label_file)?); }
     let num_iteration = num_images / size_batch;
     let learning_rate_coefficient = 100f64.powf(1.0 / (num_iteration * num_epoch) as f64);
+    let mut epoch_writer = if let Some(path) = epoch_log {
+        let mut file = File::create(path)?;
+        writeln!(file, "model_name,epoch,cost,accuracy")?;
+        Some(file)
+    } else {
+        None
+    };
     let mut rng = rand::thread_rng();
-    for _epoch in 0..num_epoch {
+    for epoch in 0..num_epoch {
         for _iteration in 0..num_iteration {
             for _batch in 0..size_batch {
                 let data_index = rng.gen_range(0..num_images);
@@ -418,10 +429,33 @@ fn train_model(hidden_layers: Vec<usize>, size_batch: usize, num_epoch: usize, m
             network::apply_neurons_fixes(&mut layers, size_batch);
             learning_rate /= learning_rate_coefficient;
         }
+        if let Some(file) = epoch_writer.as_mut() {
+            let (cost, acc) = evaluate_with_test_data(&mut layers)?;
+            writeln!(file, "{},{},{:.6},{:.4}", model_name, epoch + 1, cost, acc)?;
+        }
     }
     binary_save::save_model_with_name(&layers, &layer_sizes[1..], model_name)
 }
-
+fn evaluate_with_test_data(layers: &mut Vec<Layer>) -> io::Result<(f64, f64)> {
+    let mut test_image_file = File::open("datas/digits_test_image.bin")?;
+    let mut test_label_file = File::open("datas/digits_test_label.bin")?;
+    let num_test_images = binary_load::get_num_of_images(&mut test_image_file)?;
+    let num_test_labels = binary_load::get_num_of_labels(&mut test_label_file)?;
+    let mut num_correct: u32 = 0;
+    let mut cost = 0f64;
+    for _ in 0..num_test_images {
+        let test_image = binary_load::get_next_image(&mut test_image_file)?;
+        let test_label = binary_load::get_next_label(&mut test_label_file)?;
+        network::guess_answer(layers, &test_image);
+        let activations = layers.last().unwrap().get_neurons_activations();
+        let answer = activations.iter().enumerate().fold(0, |max_i, (i, &x)| if x > activations[max_i] { i } else { max_i });
+        cost -= activations[answer].ln();
+        if test_label == answer as u8 { num_correct += 1; }
+    }
+    cost /= num_test_labels as f64;
+    let accuracy = 100f64 * (num_correct as f64 / num_test_labels as f64);
+    Ok((cost, accuracy))
+}
 fn run_auto_test(model_name: &str) -> io::Result<()> {
     let mut header_file = File::open(format!("save_datas/{}/header.bin", model_name))?;
     let (layer_sizes_len, layer_sizes) = binary_load::load_header(&mut header_file)?;

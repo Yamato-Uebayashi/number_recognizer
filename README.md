@@ -68,3 +68,18 @@ Rustコンパイラ、エディタ、ターミナル、シェルのバージョ�
 
 CSV列:
 - `timestamp,model_name,layers,batch_size,epochs,learning_rate,cost,accuracy`
+
+## 全自動の複数条件実験
+`scripts_run_experiment.sh` は層構造・バッチサイズ・学習率の複数パターンを総当りで実行し、以下2種類のCSVを出力します。
+
+- `results_summary.csv`: 1実験(1モデル)につき1行
+- `results_epoch.csv`: 各エポックごとの推移を1行
+
+例:
+```bash
+BATCH_SIZES="32 64" \
+LEARNING_RATES="0.03 0.01" \
+LAYERS_LIST="64,32;128,64;128,64,32" \
+EPOCHS=5 \
+./scripts_run_experiment.sh
+```
