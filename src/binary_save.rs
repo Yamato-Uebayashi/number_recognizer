@@ -9,21 +9,23 @@ use std::path::Path;
 pub fn save_model(layers: &[Layer], layer_sizes: &[usize]) -> io::Result<()> {
     let mut model_name = String::new();
     println!("保存するフォルダ名を決めて下さい。");
-    loop {
-        let _ = io::stdin().read_line(&mut model_name)?;
-        model_name = model_name.trim().to_string();
-        let dir_path = Path::new("save_datas").join(&model_name);
-        if create_dir_all(&dir_path).is_ok() {
-            println!("{}という名前でモデルを保存しています...", model_name);
-            break;
-        } else {
-            println!("そのフォルダ名は無効です。\nもう一度入力して下さい。");
-            model_name.clear();
-        }
-    }
+    io::stdin().read_line(&mut model_name)?;
+    save_model_with_name(layers, layer_sizes, model_name.trim())
+}
+
+#[inline]
+pub fn save_model_with_name(
+    layers: &[Layer],
+    layer_sizes: &[usize],
+    model_name: &str,
+) -> io::Result<()> {
+    let model_name = model_name.trim();
+    let dir_path = Path::new("save_datas").join(model_name);
+    create_dir_all(&dir_path)?;
+    println!("{}という名前でモデルを保存しています...", model_name);
 
     //ヘッダー書式: レイヤー数,各層の大きさ浅い方から出力層まで
-    let mut path = Path::new("save_datas").join(&model_name).join("header.bin");
+    let mut path = Path::new("save_datas").join(model_name).join("header.bin");
     let mut header_file = File::create(&path)?;
     header_file.write_all(&layer_sizes.len().to_be_bytes())?;
     for &size in layer_sizes {
@@ -33,7 +35,7 @@ pub fn save_model(layers: &[Layer], layer_sizes: &[usize]) -> io::Result<()> {
     // データ書式: 各バイアス,各重み行列
     for (i, layer) in layers.iter().enumerate() {
         path = Path::new("save_datas")
-            .join(&model_name)
+            .join(model_name)
             .join(format!("layer{}.bin", i));
         let mut file = File::create(&path)?;
         for neuron in &layer.neurons {

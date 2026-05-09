@@ -47,3 +47,24 @@ Rustコンパイラ、エディタ、ターミナル、シェルのバージョ�
 できればもっと高速化したいですが、僕はグラフィックボード非搭載のノートPCしか持っておらず、CPUの内蔵グラフィックは Intel TigerLake-LP GT2 [Iris Xe Graphics] というよく分からないものなのでGPUによる並列化は恐らくしません。試すとすればrayonでCPUによる並列化をするなどです。\
 また、Rust言語の技術不足で残してしまった無駄な処理も多いので、それもなんとかしたいです。例えばネットワークのコードは訓練用の複雑なものと判定用の軽量なもので2種類に分けているのですが、共通する処理をトレイトとして切り出す方法を当時は知らなかったので大量の重複するコードを書いてしまっています。こちらは比較的簡単なので時間があれば修正したいと思います。\
 ただ、最近は宿題やら進路の調べものやらで時間がないのでこのまま放置するかも知れません。
+
+## 実行時オプション (CLI)
+対話モードに加えて、以下のサブコマンドが使えます。
+
+- 学習のみ:
+  - `cargo run --release -- train --layers 64,32 --batch-size 32 --epochs 5 --learning-rate 0.03 --model-name my_model`
+- 自動試験のみ:
+  - `cargo run --release -- test --model-name my_model`
+- 学習後にそのまま自動試験:
+  - `cargo run --release -- train-test --layers 64,32 --batch-size 32 --epochs 5 --learning-rate 0.03 --model-name my_model`
+
+`--layers` は入力層(784)と出力層(10)を除いた中間層のニューロン数をカンマ区切りで指定します。
+
+## 1コマンド実行と記録
+`./scripts_run_experiment.sh` を使うと、モデル作成から自動試験までを1コマンドで実行し、結果をCSVに追記できます。
+
+例:
+- `LAYERS=128,64 BATCH_SIZE=64 EPOCHS=8 LEARNING_RATE=0.02 LOG_FILE=results.csv ./scripts_run_experiment.sh model_a`
+
+CSV列:
+- `timestamp,model_name,layers,batch_size,epochs,learning_rate,cost,accuracy`
