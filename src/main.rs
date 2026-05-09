@@ -6,11 +6,16 @@ mod network;
 use light_network::LightLayer;
 use network::Layer;
 use rand::{self, Rng};
+use std::env;
 use std::fs::{self, DirEntry, File};
 use std::io::{self, Write};
 use std::path::Path;
 
 fn main() -> io::Result<()> {
+    let args: Vec<String> = env::args().collect();
+    if args.len() > 1 {
+        return run_from_cli(&args);
+    }
     loop {
         let mut input_menu = String::new();
         println!(
@@ -339,5 +344,146 @@ fn main() -> io::Result<()> {
         }
         println!();
     }
+    Ok(())
+}
+
+fn run_from_cli(args: &[String]) -> io::Result<()> {
+    match args[1].as_str() {
+        "train" | "train-test" => {
+            let hidden_layers = parse_usize_csv(get_arg_value(args, "--layers")?)?;
+            let batch_size = get_arg_value(args, "--batch-size")?.parse::<usize>().map_err(invalid_input)?;
+            let epochs = get_arg_value(args, "--epochs")?.parse::<usize>().map_err(invalid_input)?;
+            let learning_rate = get_arg_value(args, "--learning-rate")?.parse::<f64>().map_err(invalid_input)?;
+            let model_name = get_arg_value(args, "--model-name")?;
+            let epoch_log = find_optional_arg_value(args, "--epoch-log");
+            train_model(hidden_layers, batch_size, epochs, learning_rate, model_name, epoch_log)?;
+            if args[1] == "train-test" {
+                run_auto_test(model_name)?;
+            }
+            Ok(())
+        }
+        "test" => run_auto_test(get_arg_value(args, "--model-name")?),
+        _ => Err(io::Error::new(io::ErrorKind::InvalidInput, "不明なサブコマンドです。")),
+    }
+}
+
+fn get_arg_value<'a>(args: &'a [String], key: &str) -> io::Result<&'a str> {
+    let index = args.iter().position(|arg| arg == key).ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, format!("{key} が指定されていません。")))?;
+    args.get(index + 1).map(|s| s.as_str()).ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, format!("{key} の値が不足しています。")))
+}
+fn find_optional_arg_value<'a>(args: &'a [String], key: &str) -> Option<&'a str> {
+    args.iter().position(|arg| arg == key).and_then(|i| args.get(i + 1)).map(|s| s.as_str())
+}
+
+fn parse_usize_csv(csv: &str) -> io::Result<Vec<usize>> {
+    let mut values = Vec::new();
+    for token in csv.split(',') {
+        let n = token.trim().parse::<usize>().map_err(invalid_input)?;
+        if n <= 1 {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "層のニューロン数は2以上で指定してください。"));
+        }
+        values.push(n);
+    }
+    Ok(values)
+}
+
+fn invalid_input<E: std::fmt::Display>(e: E) -> io::Error {
+    io::Error::new(io::ErrorKind::InvalidInput, e.to_string())
+}
+
+fn train_model(hidden_layers: Vec<usize>, size_batch: usize, num_epoch: usize, mut learning_rate: f64, model_name: &str, epoch_log: Option<&str>) -> io::Result<()> {
+    let mut layer_sizes = hidden_layers;
+    layer_sizes.insert(0, 784);
+    layer_sizes.push(10);
+    let num_layers = layer_sizes.len() - 1;
+    let mut layers: Vec<Layer> = Vec::with_capacity(num_layers);
+    for i in 0..num_layers {
+        layers.push(Layer::new(layer_sizes[i + 1], layer_sizes[i], i == num_layers - 1));
+    }
+    let mut image_file = File::open("datas/digits_image.bin")?;
+    let num_images = binary_load::get_num_of_images(&mut image_file)?;
+    let mut label_file = File::open("datas/digits_label.bin")?;
+    let _ = binary_load::get_num_of_labels(&mut label_file)?;
+    let mut all_images: Vec<Box<Vec<f64>>> = Vec::with_capacity(num_images);
+    for _ in 0..num_images { all_images.push(binary_load::get_next_image(&mut image_file)?); }
+    let mut all_labels: Vec<u8> = Vec::with_capacity(num_images);
+    for _ in 0..num_images { all_labels.push(binary_load::get_next_label(&mut label_file)?); }
+    let num_iteration = num_images / size_batch;
+    let learning_rate_coefficient = 100f64.powf(1.0 / (num_iteration * num_epoch) as f64);
+    let mut epoch_writer = if let Some(path) = epoch_log {
+        let mut file = File::create(path)?;
+        writeln!(file, "model_name,epoch,cost,accuracy")?;
+        Some(file)
+    } else {
+        None
+    };
+    let mut rng = rand::thread_rng();
+    for epoch in 0..num_epoch {
+        for _iteration in 0..num_iteration {
+            for _batch in 0..size_batch {
+                let data_index = rng.gen_range(0..num_images);
+                let image = all_images.get(data_index).unwrap();
+                let label = all_labels.get(data_index).unwrap();
+                let _ = network::backpropagation(&mut layers, image, learning_rate, *label as usize);
+            }
+            network::apply_neurons_fixes(&mut layers, size_batch);
+            learning_rate /= learning_rate_coefficient;
+        }
+        if let Some(file) = epoch_writer.as_mut() {
+            let (cost, acc) = evaluate_with_test_data(&mut layers)?;
+            writeln!(file, "{},{},{:.6},{:.4}", model_name, epoch + 1, cost, acc)?;
+        }
+    }
+    binary_save::save_model_with_name(&layers, &layer_sizes[1..], model_name)
+}
+
+fn evaluate_with_test_data(layers: &mut Vec<Layer>) -> io::Result<(f64, f64)> {
+    let mut test_image_file = File::open("datas/digits_test_image.bin")?;
+    let mut test_label_file = File::open("datas/digits_test_label.bin")?;
+    let num_test_images = binary_load::get_num_of_images(&mut test_image_file)?;
+    let num_test_labels = binary_load::get_num_of_labels(&mut test_label_file)?;
+    let mut num_correct: u32 = 0;
+    let mut cost = 0f64;
+    for _ in 0..num_test_images {
+        let test_image = binary_load::get_next_image(&mut test_image_file)?;
+        let test_label = binary_load::get_next_label(&mut test_label_file)?;
+        network::guess_answer(layers, &test_image);
+        let activations = layers.last().unwrap().get_neurons_activations();
+        let answer = activations.iter().enumerate().fold(0, |max_i, (i, &x)| if x > activations[max_i] { i } else { max_i });
+        cost -= activations[answer].ln();
+        if test_label == answer as u8 { num_correct += 1; }
+    }
+    cost /= num_test_labels as f64;
+    let accuracy = 100f64 * (num_correct as f64 / num_test_labels as f64);
+    Ok((cost, accuracy))
+}
+
+fn run_auto_test(model_name: &str) -> io::Result<()> {
+    let mut header_file = File::open(format!("save_datas/{}/header.bin", model_name))?;
+    let (layer_sizes_len, layer_sizes) = binary_load::load_header(&mut header_file)?;
+    let mut layers: Vec<LightLayer> = Vec::with_capacity(layer_sizes_len);
+    for i in 0..layer_sizes_len {
+        let path = Path::new("save_datas").join(model_name).join(format!("layer{}.bin", i));
+        let mut file = File::open(&path)?;
+        layers.push(LightLayer::new(&mut file, layer_sizes[i], if i == 0 { 784 } else { layer_sizes[i - 1] }));
+    }
+    let mut test_image_file = File::open("datas/digits_test_image.bin")?;
+    let mut test_label_file = File::open("datas/digits_test_label.bin")?;
+    let num_test_images = binary_load::get_num_of_images(&mut test_image_file)?;
+    let num_test_labels = binary_load::get_num_of_labels(&mut test_label_file)?;
+    let mut num_correct: u32 = 0;
+    let mut cost = 0f64;
+    for _ in 0..num_test_images {
+        let test_image = binary_load::get_next_image(&mut test_image_file)?;
+        let test_label = binary_load::get_next_label(&mut test_label_file)?;
+        light_network::guess_answer(&mut layers, &test_image);
+        let activations = layers.last().unwrap().get_neurons_activations();
+        let answer = activations.iter().enumerate().fold(0, |max_i, (i, &x)| if x > activations[max_i] { i } else { max_i });
+        cost -= activations[answer].ln();
+        if test_label == answer as u8 { num_correct += 1; }
+    }
+    cost /= num_test_labels as f64;
+    let accuracy = 100f64 * (num_correct as f64 / num_test_labels as f64);
+    println!("model={model_name} cost={cost:.5} accuracy={accuracy:.2}%");
     Ok(())
 }
