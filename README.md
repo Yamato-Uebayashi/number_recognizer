@@ -83,5 +83,3 @@ LAYERS_LIST="64,32;128,64;128,64,32" \
 EPOCHS=5 \
 ./scripts_run_experiment.sh
 ```
-
-CSVはヘッダ付きで、Python(pandas/matplotlib等)でそのまま読み込みしやすい形式です。

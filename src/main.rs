@@ -436,7 +436,6 @@ fn train_model(hidden_layers: Vec<usize>, size_batch: usize, num_epoch: usize, m
     }
     binary_save::save_model_with_name(&layers, &layer_sizes[1..], model_name)
 }
-
 fn evaluate_with_test_data(layers: &mut Vec<Layer>) -> io::Result<(f64, f64)> {
     let mut test_image_file = File::open("datas/digits_test_image.bin")?;
     let mut test_label_file = File::open("datas/digits_test_label.bin")?;
@@ -457,7 +456,6 @@ fn evaluate_with_test_data(layers: &mut Vec<Layer>) -> io::Result<(f64, f64)> {
     let accuracy = 100f64 * (num_correct as f64 / num_test_labels as f64);
     Ok((cost, accuracy))
 }
-
 fn run_auto_test(model_name: &str) -> io::Result<()> {
     let mut header_file = File::open(format!("save_datas/{}/header.bin", model_name))?;
     let (layer_sizes_len, layer_sizes) = binary_load::load_header(&mut header_file)?;
